@@ -6,24 +6,24 @@
 
 **A second pair of eyes for driver awareness.**
 
-A computer-vision research prototype that connects a local Python inference server to an Expo mobile app and a responsive web dashboard.
+A computer-vision research prototype with an Expo mobile app connected to a local Python inference server, plus a web dashboard that can analyze your webcam directly in the browser.
 
 [![Expo](https://img.shields.io/badge/Expo-SDK%2057-101A2A?logo=expo&logoColor=white)](https://docs.expo.dev/versions/v57.0.0/)
 [![Python](https://img.shields.io/badge/Python-3.12-101A2A?logo=python)](backend/)
 [![React Native](https://img.shields.io/badge/React%20Native-0.86-101A2A?logo=react)](mobile/)
 [![CI](https://github.com/re1nhardd/SafeRideAI/actions/workflows/ci.yml/badge.svg)](https://github.com/re1nhardd/SafeRideAI/actions/workflows/ci.yml)
 
-[Explore the web demo](https://saferide-ai-re1nhardd.vercel.app) · [Run with Expo Go](#run-on-your-phone-with-expo-go) · [Architecture](#architecture) · [Engineering review](docs/ENGINEERING_REVIEW.md)
+[Open the web app](https://saferide-ai-re1nhardd.vercel.app) · [Run with Expo Go](#run-on-your-phone-with-expo-go) · [Architecture](#architecture) · [Engineering review](docs/ENGINEERING_REVIEW.md)
 
 </div>
 
 ## The idea
 
-SafeRide AI brings visual and voice signals into a single monitoring interface: eye closure, yawning, head orientation, phone presence, and optional help-phrase detection. The Python backend processes frames from the **computer's camera**; the phone displays the results and alerts.
+SafeRide AI brings visual and voice signals into a single monitoring interface: eye closure, yawning, head orientation, phone presence, and optional help-phrase detection. The original Expo Go workflow is preserved: the Python backend processes frames from the **computer's camera**; the phone displays the results and alerts. The web app additionally offers local browser inference with **Use webcam**.
 
 The project uses pretrained MediaPipe and YOLO models with calibrated thresholds and temporal heuristics. It does **not** claim a newly trained foundation model, validated accident prevention, or a measured detection accuracy.
 
-> **Try it without hardware:** the hosted demo opens with explicitly labeled simulated scenarios and an illustrated driver. It never activates your camera or microphone. Choose **Connect server** to switch to real data from your own inference server.
+> **Open and use:** visit the [web app](https://saferide-ai-re1nhardd.vercel.app), choose **Use webcam**, and allow camera access. Video stays on your device. The page initially shows explicitly labeled demo scenarios; demo mode uses no camera or microphone. **Connect server** remains available for the original Python / Expo Go workflow.
 
 ## A look inside
 
@@ -52,11 +52,11 @@ These are screenshots of the running web application, including its responsive m
 |---|---|---|
 | Eye closure | MediaPipe face landmarks, calibrated Eye Aspect Ratio, rolling PERCLOS | Warning / drowsiness states |
 | Yawning | Inner-lip opening relative to mouth width, persistence threshold | Yawning indicator |
-| Head orientation | Landmark-based `solvePnP` and rotation decomposition | Looking-away indicator |
-| Phone / distractions | Pretrained YOLOv8 object detection | Phone presence, annotated boxes |
+| Head orientation | Python: `solvePnP`; browser: persistent nose-to-eye offset | Looking-away indicator |
+| Phone / distractions | Python: YOLOv8; browser: EfficientDet-Lite0 (COCO `cell phone`) | Phone presence, annotated boxes |
 | Attention | Weighted penalties and exponential smoothing | Heuristic 0–100 score |
-| Speech, optional | Whisper or Google recognition, keyword/fuzzy/phonetic matching | Transcript, help / concerning-speech signals |
-| Alerts | Per-category cooldowns on the server | In-app messages; native local notifications and haptics where available |
+| Speech, optional | Python server only: Whisper or Google recognition, keyword/fuzzy/phonetic matching | Transcript, help / concerning-speech signals |
+| Alerts | Live visual states in browser; per-category cooldowns on the server | In-app messages; native local notifications and haptics where available |
 | Connection health | Retry backoff, stale-message timeout, fresh-frame checks | Explicit offline / no-camera / no-face / calibration states |
 
 A phone visible in the image is not proof of active phone use. Head pose, speech keywords and attention thresholds remain experimental heuristics.
@@ -82,17 +82,33 @@ flowchart LR
   API -->|WebSocket status + alerts| Phone[Expo Go mobile app]
   API -->|JPEG snapshots| Phone
   API -->|HTTPS / WSS| Web[Web app on Vercel]
+  subgraph Browser[Standalone browser mode]
+    Webcam[User-approved webcam] --> Worker[Local Web Worker]
+    Worker --> MP[MediaPipe + EfficientDet-Lite0]
+    MP --> Geometry[Calibration + temporal signals]
+  end
+  Geometry --> Web
   Demo[Explicit simulated scenarios] --> Web
   Demo --> Phone
 ```
 
-**Deployment boundary:** Vercel serves the exported client. Real inference remains on a computer with camera access and a long-running Python process. The current capture architecture is not a remote camera-upload service and does not run ML inside Vercel or on the phone.
+**Deployment boundary:** Vercel serves the exported client, pinned WASM runtime and model assets. In **Use webcam** mode, inference runs in a local browser worker; frames are neither uploaded nor recorded. In **Connect server / Expo Go** mode, inference still runs in a long-running Python process on the computer. Vercel does not execute ML, and the Expo app does not capture phone-camera frames.
 
 The server owns camera/model resources in one worker thread. A single async broadcaster sends status and alerts on the ASGI event loop. Clients receive status twice per second; inference defaults to a target of 5 FPS, with actual throughput depending on hardware. JPEG polling is capped at roughly 4 requests/second per mobile/web client.
 
-## Quick start — browser demo
+## Use your webcam on the website
 
-Requirements: **Node.js 22.13+**, npm, Git. Python is unnecessary for demo mode. SDK version requirements are documented in the [Expo SDK 57 reference](https://docs.expo.dev/versions/v57.0.0/).
+1. Open [SafeRide AI](https://saferide-ai-re1nhardd.vercel.app) in a current desktop Chrome or Edge.
+2. Click **Use webcam** and allow camera access. No installation, Python server, account or API key is required.
+3. Wait for the models to load, then face the camera with eyes open and mouth relaxed for five seconds.
+4. The live preview shows face landmarks and phone boxes; the dashboard updates eye-closure, yawning, looking-away and attention signals.
+5. Use **Recalibrate** after changing position or lighting. **Stop camera** or **Explore demo** releases the webcam. Switching away from the tab pauses monitoring; choose **Retry camera** to resume.
+
+The first start downloads roughly 20 MB of runtime/model assets from this website. Processing then stays on your device. Browser mode requests video only; speech recognition remains an optional Python-server feature. Performance depends on your hardware, and the browser and Python algorithms can produce different readings. Camera permission is required by the browser and cannot be skipped.
+
+## Quick start — local web app
+
+Requirements: **Node.js 22.13+**, npm, Git. Python is unnecessary for browser webcam and demo modes. SDK version requirements are documented in the [Expo SDK 57 reference](https://docs.expo.dev/versions/v57.0.0/).
 
 ```bash
 git clone https://github.com/re1nhardd/SafeRideAI.git
@@ -101,7 +117,7 @@ npm ci
 npm run web
 ```
 
-Open the address printed by Expo. Demo mode is available immediately, without accounts, API keys, or model downloads.
+Open the localhost address printed by Expo. Demo mode is available immediately; choose **Use webcam** for local inference. `npm run web` and `npm run build` prepare the pinned runtime and download browser models into the ignored `mobile/public/vision/` directory on first use. Camera access requires localhost or HTTPS.
 
 ## Run on your phone with Expo Go
 
@@ -214,7 +230,7 @@ The root `vercel.json` defines a static export:
 npx vercel --prod
 ```
 
-Alternatively, import this repository in Vercel and keep those settings. The deployment opens in demo mode. For live monitoring from the HTTPS site, connect to a separately hosted **HTTPS/WSS** inference server and include the exact frontend origin in `SAFERIDE_ALLOWED_ORIGINS`.
+Alternatively, import this repository in Vercel and keep those settings. The deployment opens in demo mode; **Use webcam** runs directly on the visitor's device. The build bundles the browser models and initially needs access to Google's model storage. Camera access is allowed for the same origin; microphone access remains disabled. For optional **Connect server** mode, use a separately hosted **HTTPS/WSS** inference server and include the exact frontend origin in `SAFERIDE_ALLOWED_ORIGINS`.
 
 An HTTPS page cannot use an insecure `http://192.168...` / `ws://...` backend. Use Expo Go or the locally served web app for a LAN-only server. The backend is a trusted-network prototype with no user authentication; do not expose it directly to the public internet. Add an authenticated gateway or private network before remote use.
 
@@ -273,6 +289,10 @@ SafeRideAI/
 ├── mobile/                    # Shared Expo / React Native / web client
 │   ├── App.tsx                # Responsive dashboard + labeled demo scenarios
 │   ├── src/useServer.ts       # WebSocket lifecycle + native local notifications
+│   ├── src/useBrowserCamera.web.tsx # Webcam ownership, worker and overlay
+│   ├── src/browserSignals.ts  # Browser calibration and temporal heuristics
+│   ├── public/vision-worker.js # Local MediaPipe / EfficientDet inference
+│   ├── scripts/prepare-vision.mjs # Pinned runtime and model preparation
 │   ├── src/endpoint.ts        # HTTP/HTTPS and WS/WSS address normalization
 │   ├── src/Ring.tsx           # Attention indicator
 │   └── tests/                 # Address and tooling regression tests
@@ -306,7 +326,7 @@ python -m pip install -r requirements-test.txt
 python -m pytest -q
 ```
 
-For real-model smoke tests, also install `requirements.txt` and set `SAFERIDE_TEST_MODELS=1` before running pytest. They exercise a blank synthetic frame and geometry; they do not measure real-world detection accuracy. CI intentionally runs without camera hardware or model downloads.
+For real-model smoke tests, also install `requirements.txt` and set `SAFERIDE_TEST_MODELS=1` before running pytest. They exercise a blank synthetic frame and geometry; they do not measure real-world detection accuracy. Backend CI runs without camera hardware or model downloads. The web build downloads its static browser model assets; client unit tests use synthetic landmarks. Browser integration was also checked with actual models and a synthetic webcam stream, not a physical-camera accuracy benchmark.
 
 To fine-tune YOLO, supply a real labeled dataset YAML:
 
@@ -325,6 +345,8 @@ No labeled dataset or benchmark results are bundled. The detector expects class 
 | App opens but cannot reach Python | LAN IP, same Wi-Fi, `SAFERIDE_HOST=0.0.0.0`, firewall, port 8000 |
 | Hosted app refuses a local HTTP address | HTTPS requires HTTPS/WSS; use Expo Go or local web for LAN |
 | Camera is unavailable | Permissions, another app using it, `SAFERIDE_CAMERA` index |
+| Website camera denied / busy | Allow camera access in site settings, close other camera apps, then **Retry camera** |
+| Browser models fail to load | Reload with internet access; use current Chrome/Edge with WebGL enabled |
 | Models do not load | First-run network access, writable `backend/models/`, `/health` error |
 | Connected but no attention score | Camera, detected face and completed calibration are all required |
 | No speech or notifications | Audio is opt-in; check microphone/notification permissions and foreground state |

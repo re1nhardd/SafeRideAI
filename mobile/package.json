@@ -10,9 +10,13 @@
     "build": "expo export --platform web",
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
-    "format": "prettier --write App.tsx src tests"
+    "format": "prettier --write App.tsx src tests",
+    "prepare:vision": "node scripts/prepare-vision.mjs",
+    "prebuild": "npm run prepare:vision",
+    "preweb": "npm run prepare:vision"
   },
   "dependencies": {
+    "@mediapipe/tasks-vision": "0.10.32",
     "@react-native-async-storage/async-storage": "2.2.0",
     "expo": "~57.0.26",
     "expo-haptics": "~57.0.3",

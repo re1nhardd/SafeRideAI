@@ -8,3 +8,4 @@ mobile/dist/
 **/*.pt
 **/*.task
 mobile/dist-all/
+mobile/public/vision/

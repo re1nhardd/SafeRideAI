@@ -52,8 +52,18 @@ These source-folder originals were not deleted. The published app has one suppor
 
 No physical Android/iPhone run, live driver session, microphone recording, quantitative detection benchmark, or custom-model training was performed. Native device behavior and real-world signal thresholds still need controlled validation. Automated model smoke tests verify loadability and selected logic, not detection accuracy.
 
-The inference backend is intended for a trusted local network. The public Vercel deployment hosts only the client/demo. Remote inference requires a separately managed HTTPS service with access control. No remote push infrastructure, emergency-service integration, phone-camera upload, or guaranteed background monitoring is implemented.
+The inference backend is intended for a trusted local network. The public Vercel deployment hosts the client and browser model assets; standalone webcam inference runs on the visitor's device. The original remote Python inference option requires a separately managed HTTPS service with access control. No remote push infrastructure, emergency-service integration, phone-camera upload, or guaranteed background monitoring is implemented.
 
 The SDK 57 Expo Go installation route depends on platform availability. Follow the linked official instructions in the README rather than using an arbitrary store version.
 
 Third-party dependency audits are point-in-time checks; maintain the lockfile and rerun the checks when upgrading.
+
+
+## Browser webcam addition
+
+- Added opt-in local webcam inference using pinned MediaPipe Tasks Vision 0.10.32, FaceLandmarker and EfficientDet-Lite0 in a classic Web Worker. Camera frames remain on-device; browser mode requests no audio.
+- Added five-second calibration, persistent eye-closure/yawning/looking-away signals, phone presence smoothing and explicit no-face/model-error/permission states. Browser head orientation uses a simpler landmark offset than the Python pose estimator; outputs are not interchangeable benchmarks.
+- Camera tracks, worker and timers are released on stop, mode changes, hidden tabs and failures, including permission grants arriving after cancellation.
+- Kept the Python backend and Expo Go guide unchanged. Native builds resolve a separate fallback module, without browser APIs.
+- Validation: 11 client regression tests, TypeScript, web/Android/iOS exports; real browser models with synthetic webcam input, same-origin GET-only requests, no audio request, recalibration cleanup, demo recovery, permission denial and late-grant cancellation.
+- No physical webcam accuracy test or physical Expo Go device run was performed.

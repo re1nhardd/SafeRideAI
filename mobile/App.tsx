@@ -24,6 +24,7 @@ import {
   Status,
 } from "./src/useServer";
 import { serverEndpoint } from "./src/endpoint";
+import { useBrowserCamera } from "./src/useBrowserCamera";
 
 const dark = {
   bg: "#090E19",
@@ -260,11 +261,14 @@ function Dashboard() {
   const [address, setAddress] = useState("");
   const [input, setInput] = useState("");
   const [demo, setDemo] = useState(true);
+  const [browserMode, setBrowserMode] = useState(false);
+  const browser = useBrowserCamera(browserMode);
   const [settings, setSettings] = useState(false);
   const [error, setError] = useState("");
   const [scenario, setScenario] = useState(0);
   const [testAlert, setTestAlert] = useState(false);
-  const live = useServer(address, demo);
+  const live = useServer(address, demo || browserMode);
+  const connected = browserMode ? browser.running : live.connected;
   const current = scenarios[scenario];
   const simulated: Status = {
     ...EMPTY,
@@ -280,18 +284,20 @@ function Dashboard() {
     speech_text:
       current.id === "HELP" ? "Please stop the car. I need help." : "",
   };
-  const status = demo ? simulated : live.status;
+  const status = browserMode ? browser.status : demo ? simulated : live.status;
   const ready =
     demo ||
-    (live.connected &&
+    (connected &&
       status.camera_ready &&
       status.detector_ready &&
       status.face_detected &&
       status.calibrated);
   const title = demo
     ? current.description
-    : !live.connected
-      ? "Server disconnected"
+    : !connected
+      ? browserMode
+        ? "Camera not running"
+        : "Server disconnected"
       : status.error
         ? "Monitoring unavailable"
         : !status.camera_ready
@@ -347,6 +353,7 @@ function Dashboard() {
       serverEndpoint(input);
       setError("");
       setAddress(input.trim());
+      setBrowserMode(false);
       setDemo(false);
       setSettings(false);
       live.reconnect();
@@ -370,17 +377,23 @@ function Dashboard() {
   const label = (text: string) => (
     <Text style={[s.label, { color: C.muted }]}>{text}</Text>
   );
-  const reading = (name: string, active: boolean) => (
+  const reading = (name: string, active: boolean, supported = true) => (
     <View key={name} style={[s.reading, { borderBottomColor: C.border }]}>
       <Text style={{ color: C.text, fontSize: 13 }}>{name}</Text>
       <Text
         style={{
-          color: !ready ? C.muted : active ? C.danger : C.accent,
+          color: !supported || !ready ? C.muted : active ? C.danger : C.accent,
           fontSize: 11,
           fontWeight: "700",
         }}
       >
-        {!ready ? "NO DATA" : active ? "DETECTED" : "CLEAR"}
+        {!supported
+          ? "SERVER ONLY"
+          : !ready
+            ? "NO DATA"
+            : active
+              ? "DETECTED"
+              : "CLEAR"}
       </Text>
     </View>
   );
@@ -462,16 +475,54 @@ function Dashboard() {
               </Text>
             </View>
             <View style={[s.actions, { marginTop: 18 }]}>
+              {Platform.OS === "web" &&
+                !browserMode &&
+                button(
+                  "Use webcam",
+                  () => {
+                    setDemo(false);
+                    setBrowserMode(true);
+                    setSettings(false);
+                    setTestAlert(false);
+                  },
+                  true,
+                )}
+              {browserMode &&
+                button("Stop camera", () => {
+                  setBrowserMode(false);
+                  setDemo(true);
+                })}
+              {browserMode &&
+                button(
+                  browser.running ? "Recalibrate" : "Retry camera",
+                  browser.restart,
+                )}
+
               {button(settings ? "Close settings" : "Connect server", () =>
                 setSettings(!settings),
               )}
               {!demo &&
                 button("Explore demo", () => {
+                  setBrowserMode(false);
                   setDemo(true);
                   setSettings(false);
                 })}
             </View>
           </View>
+          {Platform.OS === "web" && !browserMode && (
+            <Text
+              style={{
+                color: C.muted,
+                fontSize: 13,
+                lineHeight: 21,
+                marginBottom: 18,
+              }}
+            >
+              Use your webcam directly in this browser. No installation or
+              server needed. Video stays on your device; allow camera access
+              when asked.
+            </Text>
+          )}
           {settings &&
             card(
               <>
@@ -541,11 +592,13 @@ function Dashboard() {
                   letterSpacing: 1,
                 }}
               >
-                {demo
-                  ? "INTERACTIVE DEMO"
-                  : live.connected
-                    ? "SERVER CONNECTED"
-                    : "SERVER OFFLINE"}
+                {browserMode
+                  ? "BROWSER CAMERA"
+                  : demo
+                    ? "INTERACTIVE DEMO"
+                    : live.connected
+                      ? "SERVER CONNECTED"
+                      : "SERVER OFFLINE"}
               </Text>
               <Text
                 style={{
@@ -555,18 +608,20 @@ function Dashboard() {
                   marginTop: 5,
                 }}
               >
-                {demo
-                  ? "Simulated scenarios · illustrated camera view · no camera or microphone access"
-                  : live.connected
-                    ? "Live data from your inference server"
-                    : live.connError || "Waiting for connection…"}
+                {browserMode
+                  ? browser.phase
+                  : demo
+                    ? "Simulated scenarios · illustrated camera view · no camera or microphone access"
+                    : live.connected
+                      ? "Live data from your inference server"
+                      : live.connError || "Waiting for connection…"}
               </Text>
             </View>
             <View
               style={[
                 s.dot,
                 {
-                  backgroundColor: demo || live.connected ? C.accent : C.danger,
+                  backgroundColor: demo || connected ? C.accent : C.danger,
                 },
               ]}
             />
@@ -634,7 +689,9 @@ function Dashboard() {
                           : "NO SIGNAL"}
                     </Text>
                   </View>
-                  {demo ? (
+                  {browserMode ? (
+                    browser.preview
+                  ) : demo ? (
                     <DriverIllustration alert={current.id} />
                   ) : (
                     <Camera
@@ -645,10 +702,16 @@ function Dashboard() {
                   )}
                   <View style={[s.cameraFooter, { borderTopColor: C.border }]}>
                     <Text style={{ color: C.muted, fontSize: 11 }}>
-                      MediaPipe landmarks + YOLO objects
+                      {browserMode
+                        ? "MediaPipe + EfficientDet · on device"
+                        : "MediaPipe landmarks + YOLO objects"}
                     </Text>
                     <Text style={{ color: C.muted, fontSize: 11 }}>
-                      {demo ? "Illustration" : "Server camera"}
+                      {browserMode
+                        ? "Your webcam"
+                        : demo
+                          ? "Illustration"
+                          : "Server camera"}
                     </Text>
                   </View>
                 </>,
@@ -762,10 +825,12 @@ function Dashboard() {
                       >
                         {demo
                           ? current.detail
-                          : status.error ||
-                            (!ready
-                              ? "Check the server, camera and calibration."
-                              : "Heuristic indicators, updated from your server.")}
+                          : browserMode
+                            ? browser.phase
+                            : status.error ||
+                              (!ready
+                                ? "Check the server, camera and calibration."
+                                : "Heuristic indicators, updated from your server.")}
                       </Text>
                     </View>
                   </View>
@@ -775,7 +840,7 @@ function Dashboard() {
                   )}
                   {reading("Phone distraction", status.phone_detected)}
                   {reading("Looking away", status.looking_away)}
-                  {reading("Help request", status.help_detected)}
+                  {reading("Help request", status.help_detected, !browserMode)}
                 </>,
               )}
               {card(
@@ -783,7 +848,11 @@ function Dashboard() {
                   <View style={s.cardHead}>
                     {label("04 / VOICE SIGNAL")}
                     <Text style={{ color: C.muted, fontSize: 10 }}>
-                      {demo ? "SAMPLE" : "OPTIONAL AUDIO"}
+                      {browserMode
+                        ? "SERVER MODE ONLY"
+                        : demo
+                          ? "SAMPLE"
+                          : "OPTIONAL AUDIO"}
                     </Text>
                   </View>
                   <Text
@@ -793,17 +862,19 @@ function Dashboard() {
                       lineHeight: 23,
                     }}
                   >
-                    {status.speech_text
-                      ? `“${status.speech_text}”`
-                      : demo
-                        ? "No speech event in this scenario."
-                        : "No transcript received."}
+                    {browserMode
+                      ? "Browser mode analyzes video only. Use Expo Go with the Python server for optional speech recognition."
+                      : status.speech_text
+                        ? `“${status.speech_text}”`
+                        : demo
+                          ? "No speech event in this scenario."
+                          : "No transcript received."}
                   </Text>
                 </>,
               )}
             </View>
           </View>
-          {(testAlert || (!demo && live.lastAlert)) &&
+          {(testAlert || (!demo && !browserMode && live.lastAlert)) &&
             card(
               <>
                 <Text
@@ -830,7 +901,7 @@ function Dashboard() {
                 time: Date.now() / 1000,
               });
             })}
-            {!demo && button("Reconnect", live.reconnect)}
+            {!demo && !browserMode && button("Reconnect", live.reconnect)}
           </View>
           <View style={[s.footer, { borderTopColor: C.border }]}>
             <Text

@@ -20,3 +20,4 @@ coverage/
 .model-cache/
 dist-all/
 .ruff_cache/
+mobile/public/vision/
