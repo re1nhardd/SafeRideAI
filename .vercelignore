@@ -1,0 +1,10 @@
+backend/
+docs/
+.github/
+mobile/node_modules/
+mobile/.expo/
+mobile/dist/
+**/__pycache__/
+**/*.pt
+**/*.task
+mobile/dist-all/
